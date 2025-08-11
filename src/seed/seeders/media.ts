@@ -49,6 +49,7 @@ function getStorageBaseUrl(): string {
     // Convert S3 endpoint to public URL
     // From: https://[project-ref].storage.supabase.co/storage/v1/s3
     // To: https://[project-ref].supabase.co/storage/v1/object/public/media
+
     const regex = /https:\/\/([^.]+)\.storage\.supabase\.co/;
     const match = regex.exec(s3Endpoint);
     if (match) {
