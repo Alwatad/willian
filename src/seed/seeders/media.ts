@@ -96,6 +96,35 @@ export async function seedMedia(payload: Payload): Promise<Record<string, { id: 
         const fileUrl = `${storageBaseUrl}/${filePath}`;
 
         logger.info(`📄 Creating database entry for: ${filePath}`);
+        logger.info(`🔗 Testing URL: ${fileUrl}`);
+
+        // First, verify the URL is accessible
+        let finalFileUrl = fileUrl;
+        try {
+          const response = await fetch(fileUrl, { method: "HEAD" });
+          if (!response.ok) {
+            logger.warn(`⚠️ URL not accessible: ${fileUrl} (${response.status})`);
+            logger.warn(`Will try without folder structure...`);
+
+            // Fallback: try without folder structure
+            const fallbackUrl = `${storageBaseUrl}/${asset.filename}`;
+            const fallbackResponse = await fetch(fallbackUrl, { method: "HEAD" });
+            if (!fallbackResponse.ok) {
+              logger.error(
+                `❌ Fallback URL also not accessible: ${fallbackUrl} (${fallbackResponse.status})`,
+              );
+              continue;
+            } else {
+              logger.info(`✅ Using fallback URL: ${fallbackUrl}`);
+              finalFileUrl = fallbackUrl;
+            }
+          } else {
+            logger.success(`✅ URL is accessible: ${fileUrl}`);
+          }
+        } catch (fetchError) {
+          logger.error(`❌ Failed to verify URL accessibility: ${String(fetchError)}`);
+          continue;
+        }
 
         const extension = asset.filename.split(".").pop()?.toLowerCase();
         const mimeType = extension === "png" ? "image/png" : "image/jpeg";
@@ -114,13 +143,13 @@ export async function seedMedia(payload: Payload): Promise<Record<string, { id: 
         if (existing.docs.length > 0) {
           logger.info(`⏭️ Media already exists: ${asset.filename}, updating URL...`);
 
-          // Update existing media with correct URL
+          // Update existing media with correct URL using db approach to bypass upload system
           const _updated = await payload.update({
             collection: "media",
             id: existing.docs[0].id,
             data: {
-              url: fileUrl,
-              thumbnailURL: fileUrl,
+              url: finalFileUrl,
+              thumbnailURL: finalFileUrl,
               sizes: {
                 thumbnail: {
                   width: 400,
@@ -128,7 +157,7 @@ export async function seedMedia(payload: Payload): Promise<Record<string, { id: 
                   mimeType: mimeType,
                   filesize: 50000,
                   filename: `thumb_${asset.filename}`,
-                  url: fileUrl,
+                  url: finalFileUrl,
                 },
               },
             },
@@ -137,8 +166,8 @@ export async function seedMedia(payload: Payload): Promise<Record<string, { id: 
           mediaAssets[asset.filename] = { id: existing.docs[0].id };
           logger.success(`✅ Updated existing media: ${asset.filename}`);
         } else {
-          // Create new media entry
-          const media = (await payload.create({
+          // Create new media entry using db.create to bypass upload system
+          const media = (await payload.db.create({
             collection: "media",
             data: {
               alt: asset.alt,
@@ -147,8 +176,8 @@ export async function seedMedia(payload: Payload): Promise<Record<string, { id: 
               filesize: 100000, // These are placeholder values
               width: 800,
               height: 600,
-              url: fileUrl,
-              thumbnailURL: fileUrl,
+              url: finalFileUrl,
+              thumbnailURL: finalFileUrl,
               sizes: {
                 thumbnail: {
                   width: 400,
@@ -156,7 +185,7 @@ export async function seedMedia(payload: Payload): Promise<Record<string, { id: 
                   mimeType: mimeType,
                   filesize: 50000,
                   filename: `thumb_${asset.filename}`,
-                  url: fileUrl,
+                  url: finalFileUrl,
                 },
               },
               createdAt: new Date().toISOString(),
@@ -168,7 +197,7 @@ export async function seedMedia(payload: Payload): Promise<Record<string, { id: 
           logger.success(`✅ Created media entry: ${asset.filename} → ID: ${media.id}`);
         }
 
-        logger.info(`   🔗 File URL: ${fileUrl}`);
+        logger.info(`   🔗 Final File URL: ${finalFileUrl}`);
       } catch (error) {
         logger.error(`❌ Failed to create media entry for ${asset.filename}:`);
         logger.error(`   Error: ${String(error)}`);
